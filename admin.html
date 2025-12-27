@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lost & Found Portal</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    animation: { 'float': 'float 6s ease-in-out infinite' },
+                    keyframes: { float: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-10px)' } } }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* MODERN STYLES */
+        body { background-color: #0f172a; color: #e2e8f0; overflow-x: hidden; }
+        
+        /* Background Effects */
+        .bg-blob { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        .blob { position: absolute; filter: blur(80px); opacity: 0.4; }
+        .blob-1 { top: -10%; left: -10%; width: 500px; height: 500px; background: #6366f1; }
+        .blob-2 { bottom: -10%; right: -10%; width: 600px; height: 600px; background: #ec4899; }
+        
+        /* Glass UI */
+        .glass {
+            background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Inputs - Ensuring they are clickable */
+        input, select, textarea {
+            background: rgba(15, 23, 42, 0.8) !important; 
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            color: white !important; 
+            transition: all 0.3s ease;
+            position: relative; 
+            z-index: 20; /* Force inputs to top */
+        }
+        input:focus, select:focus, textarea:focus { border-color: #6366f1 !important; transform: translateY(-2px); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+
+        .btn-primary { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); transition: all 0.3s ease; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 20px -10px rgba(99, 102, 241, 0.5); }
+        
+        .hidden-ui { display: none !important; }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        #map { height: 300px; width: 100%; border-radius: 1rem; z-index: 1; border: 1px solid rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col">
+
+    <div class="bg-blob"><div class="blob blob-1 rounded-full"></div><div class="blob blob-2 rounded-full"></div></div>
+
+    <nav class="glass sticky top-4 z-50 mx-4 mt-4 rounded-2xl px-6 py-4 flex justify-between items-center transition-all duration-300 border-white/10">
+        <div class="flex items-center gap-4">
+            <div class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-2.5 rounded-xl shadow-lg animate-float"><i class="fa-solid fa-box-open text-xl"></i></div>
+            <div><h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">Lost<span class="text-white font-light">&</span>Found</h1></div>
+        </div>
+        <div id="userControls" class="hidden-ui flex items-center gap-4">
+            <span id="userEmailDisplay" class="text-xs font-semibold text-indigo-300 bg-indigo-500/10 px-4 py-2 rounded-full border border-indigo-500/20 hidden md:block"></span>
+            <button onclick="logout()" class="text-gray-400 hover:text-red-400 transition-colors transform hover:scale-110 p-2"><i class="fa-solid fa-right-from-bracket text-xl"></i></button>
+        </div>
+    </nav>
+
+    <div id="authScreen" class="flex-grow flex justify-center items-center p-4">
+        <div class="glass p-10 rounded-3xl w-full max-w-md text-center transform transition-all hover:scale-[1.01] duration-500">
+            <div class="mb-8 inline-flex p-5 rounded-full bg-indigo-500/10 text-indigo-400 mb-4"><i class="fa-solid fa-fingerprint text-4xl"></i></div>
+            <h2 class="text-3xl font-bold text-white mb-2">Welcome Back</h2>
+            <div class="space-y-4 text-left">
+                <input type="email" id="loginEmail" placeholder="Email Address" class="w-full p-3.5 rounded-xl outline-none">
+                <input type="password" id="loginPass" placeholder="Password" class="w-full p-3.5 rounded-xl outline-none">
+                <button onclick="handleLogin()" class="btn-primary w-full text-white font-bold py-3.5 rounded-xl shadow-lg mt-4">Sign In</button>
+                <div class="grid grid-cols-2 gap-4"><button onclick="handleRegister()" class="bg-slate-800 border border-white/10 text-gray-300 py-3 rounded-xl hover:bg-slate-700">Sign Up</button><button onclick="handleGoogleLogin()" class="bg-slate-800 border border-white/10 text-gray-300 py-3 rounded-xl hover:bg-slate-700">Google</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="appScreen" class="hidden-ui max-w-7xl mx-auto p-4 md:p-8 flex-grow w-full fade-in">
+        <div class="glass p-2 rounded-2xl mb-8 flex flex-wrap justify-between items-center overflow-x-auto">
+            <div class="flex space-x-2 w-full md:w-auto min-w-max">
+                <button onclick="switchTab('report')" id="tab-report" class="btn-primary px-6 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg">Report</button>
+                <button onclick="switchTab('feed')" id="tab-feed" class="px-6 py-2.5 rounded-xl text-sm font-bold text-gray-400 hover:bg-slate-800 hover:text-white transition">Feed</button>
+                <button onclick="switchTab('qr')" id="tab-qr" class="px-6 py-2.5 rounded-xl text-sm font-bold text-gray-400 hover:bg-slate-800 hover:text-white transition">QR Tags</button>
+                <button onclick="switchTab('contact')" id="tab-contact" class="px-6 py-2.5 rounded-xl text-sm font-bold text-gray-400 hover:bg-slate-800 hover:text-white transition">Support</button>
+                <button onclick="switchTab('admin')" id="tab-admin" class="hidden-ui px-6 py-2.5 rounded-xl text-sm font-bold text-red-400 hover:bg-red-500/10 transition">Admin</button>
+            </div>
+        </div>
+
+        <div id="view-report" class="fade-in">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-2 glass p-8 rounded-3xl relative overflow-hidden">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3"><i class="fa-solid fa-pen-nib text-indigo-400"></i> Submit Report</h2>
+                    <form onsubmit="submitReport(event)" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div><label class="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Type</label><select id="r_type" onchange="checkSmartMatch()" class="w-full p-4 rounded-xl outline-none cursor-pointer"><option value="Lost">I Lost an Item</option><option value="Found">I Found an Item</option></select></div>
+                            <div><label class="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Item Name</label><input id="r_item" onkeyup="checkSmartMatch()" required type="text" placeholder="e.g. Black Dell Laptop" class="w-full p-4 rounded-xl"></div>
+                        </div>
+                        <div id="smartMatchAlert" class="hidden-ui bg-yellow-500/10 border-l-4 border-yellow-500 p-4 rounded-r-xl flex items-start gap-4"><i class="fa-solid fa-bolt text-yellow-500 mt-1 animate-pulse"></i><div><p class="font-bold text-yellow-500 text-sm">Match Detected!</p><p class="text-sm text-gray-300 mt-1">Check feed for: <span id="matchDetails" class="font-bold text-white underline cursor-pointer" onclick="switchTab('feed')"></span></p></div></div>
+                        
+                        <div class="border-2 border-dashed border-gray-600 rounded-xl p-6 text-center hover:border-indigo-500 transition-colors cursor-pointer relative z-10">
+                            <input type="file" id="r_image" accept="image/*" class="hidden" onchange="document.getElementById('fileLabel').innerText = this.files[0].name">
+                            <label for="r_image" class="cursor-pointer block"><i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-500 mb-2"></i><p id="fileLabel" class="text-sm text-gray-400">Click to Upload Photo</p></label>
+                            <p id="uploadStatus" class="text-xs text-indigo-400 mt-2 hidden-ui font-bold animate-pulse">Uploading...</p>
+                        </div>
+
+                        <div><label class="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Description</label><div class="relative"><textarea id="r_desc" required rows="4" placeholder="Details..." class="w-full p-4 rounded-xl outline-none"></textarea><button type="button" onclick="startDictation()" class="absolute right-3 bottom-3 p-2 text-gray-400 hover:text-indigo-400 z-20"><i class="fa-solid fa-microphone text-xl" id="micIcon"></i></button></div></div>
+                        <div><label class="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">WhatsApp</label><input id="r_phone" type="number" placeholder="919876543210" class="w-full p-4 rounded-xl"></div>
+                        <button type="submit" id="submitBtn" class="btn-primary w-full text-white font-bold py-4 rounded-xl"><i class="fa-solid fa-paper-plane mr-2"></i> Submit Report</button>
+                    </form>
+                </div>
+                <div class="glass p-6 rounded-3xl h-fit"><h3 class="font-bold text-white mb-4"><i class="fa-solid fa-map-pin text-indigo-400 mr-2"></i> Location</h3><div id="map"></div><input type="hidden" id="r_coords"><p id="loc_status" class="hidden-ui text-center text-xs font-bold text-green-400 mt-2">Location Pinned</p></div>
+            </div>
+        </div>
+
+        <div id="view-feed" class="hidden-ui fade-in">
+            <div class="flex flex-col lg:flex-row gap-8">
+                <div class="flex-grow">
+                    <div class="glass p-4 rounded-2xl mb-6 flex gap-4">
+                        <input type="text" id="searchBar" onkeyup="filterFeed()" placeholder="Search..." class="w-full p-3 rounded-xl outline-none">
+                        <select id="filterType" onchange="filterFeed()" class="p-3 rounded-xl bg-slate-800 text-sm font-bold"><option value="All">All</option><option value="Lost">Lost</option><option value="Found">Found</option></select>
+                        <button onclick="window.fetchData()" class="p-3 bg-indigo-600/20 text-indigo-400 rounded-xl hover:bg-indigo-600 hover:text-white"><i class="fa-solid fa-rotate"></i></button>
+                    </div>
+                    <div id="feedContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6"><p class="col-span-full text-center text-gray-500 py-10">Loading...</p></div>
+                </div>
+                <div class="w-full lg:w-80 flex-shrink-0 space-y-6">
+                    <div class="glass p-6 rounded-3xl border-t-4 border-yellow-500/50"><h3 class="font-bold text-white mb-4"><i class="fa-solid fa-trophy text-yellow-500 mr-2"></i> Top Heroes</h3><ul id="leaderboardList" class="space-y-3"></ul></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-qr" class="hidden-ui fade-in">
+            <div class="glass max-w-2xl mx-auto p-10 rounded-3xl text-center">
+                <div class="inline-block p-6 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl mb-6 shadow-lg"><i class="fa-solid fa-qrcode text-4xl text-white"></i></div>
+                <h2 class="text-3xl font-bold text-white mb-2">Smart QR Tags</h2>
+                <div class="space-y-4 max-w-md mx-auto text-left bg-slate-800/50 p-6 rounded-2xl border border-white/5 mt-8">
+                    <label class="text-xs font-bold text-gray-400 uppercase">Your Email</label>
+                    <input type="text" id="qr_email" class="w-full p-3 rounded-lg focus:ring-2 focus:ring-cyan-500">
+                    
+                    <label class="text-xs font-bold text-gray-400 uppercase">Item Name</label>
+                    <input type="text" id="qr_item_name" placeholder="e.g. Laptop" class="w-full p-3 rounded-lg focus:ring-2 focus:ring-cyan-500">
+                    
+                    <button onclick="generateQR()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 rounded-lg transition mt-2">Generate Code</button>
+                </div>
+                <div id="qr_result" class="hidden-ui mt-8 p-6 bg-white rounded-2xl inline-block">
+                    <canvas id="qrcode"></canvas>
+                    <p class="text-xs font-bold text-gray-400 mt-2 uppercase">Scan to Contact</p>
+                    <button onclick="printQR()" class="mt-4 text-indigo-600 font-bold hover:underline text-sm"><i class="fa-solid fa-print"></i> Print Label</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-contact" class="hidden-ui fade-in">
+             <div class="glass max-w-4xl mx-auto p-12 rounded-3xl text-center">
+                <h2 class="text-3xl font-bold text-white mb-10">Campus Support</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="p-8 bg-slate-800/50 rounded-2xl border border-white/5 hover:border-indigo-500/50 transition">
+                        <i class="fa-solid fa-user-shield text-4xl text-indigo-400 mb-4"></i><h3 class="text-xl font-bold text-white">Gymkhana President</h3><p class="text-gray-400">Hamendra Yadav</p>
+                    </div>
+                    <div class="p-8 bg-slate-800/50 rounded-2xl border border-white/5 hover:border-purple-500/50 transition">
+                        <i class="fa-solid fa-headset text-4xl text-purple-400 mb-4"></i><h3 class="text-xl font-bold text-white">Tech Support</h3><a href="mailto:arss@lnmiit.ac.in" class="text-purple-400 hover:underline">arss@lnmiit.ac.in</a>
+                    </div>
+                </div>
+             </div>
+        </div>
+
+        <div id="view-admin" class="hidden-ui fade-in"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+
+        // --- UPDATE YOUR KEYS HERE ---
+        const firebaseConfig = {
+           apiKey: "AIzaSyCxV_JiHEMykTyLyW2ba9VtOHcsPu61-JU",
+           authDomain: "lost-b55d8.firebaseapp.com",
+           projectId: "lost-b55d8",
+           storageBucket: "lost-b55d8.firebasestorage.app",
+           messagingSenderId: "805227872638",
+           appId: "1:805227872638:web:eee07259ee3da97b51732f"
+        };
+        const API_URL = "https://script.google.com/macros/s/AKfycbwEoTXrz6uL8VxS6FbJg8zQ_nG5FlygPxqad8de9SHznPNwWt2VpaeZ07MmuxdpI2Ls/exec"; 
+        const ADMINS = ["riteshmalik21092005@gmail.com"];
+        const CLOUD_NAME = "dbxpn84zn"; 
+        const UPLOAD_PRESET = "ml_preset"; 
+        const DEFAULT_COORDS = [26.9363, 75.9235]; 
+
+        const app = initializeApp(firebaseConfig); const auth = getAuth(app); const provider = new GoogleAuthProvider();
+        let currentUser = null, isAdmin = false, map, marker, cachedData = [], adminChartInstance = null;
+
+        window.initMap = () => {
+            if(map) { setTimeout(() => map.invalidateSize(), 100); return; }
+            map = L.map('map').setView(DEFAULT_COORDS, 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            map.on('click', e => {
+                if(marker) map.removeLayer(marker); marker = L.marker(e.latlng).addTo(map);
+                document.getElementById('r_coords').value = `http://maps.google.com/?q=${e.latlng.lat},${e.latlng.lng}`;
+                document.getElementById('loc_status').classList.remove('hidden-ui');
+            });
+        };
+
+        // --- FIXED QR GENERATOR ---
+        window.generateQR = () => {
+            const e = document.getElementById('qr_email').value;
+            const i = document.getElementById('qr_item_name').value;
+            if(!e || !i) return alert("Please enter email and item name.");
+            
+            // Using Qrious library (Canvas based)
+            new QRious({
+                element: document.getElementById('qrcode'),
+                value: `mailto:${e}?subject=Found: ${i}&body=I found your ${i}. Please contact me.`,
+                size: 200,
+                level: 'H'
+            });
+            document.getElementById('qr_result').classList.remove('hidden-ui');
+        };
+        window.printQR = () => { 
+            const imgUrl = document.getElementById('qrcode').toDataURL("image/png");
+            const w=window.open('','','height=500,width=500'); 
+            w.document.write(`<html><body style="text-align:center;"><h2 style="font-family:sans-serif">If Found Contact:</h2><img src="${imgUrl}"/><br><p style="font-family:sans-serif">Scan to Email Owner</p></body></html>`); 
+            w.document.close(); w.print(); 
+        }
+
+        async function uploadImage(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('upload_preset', UPLOAD_PRESET);
+            const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: 'POST', body: formData });
+            const data = await res.json();
+            return data.secure_url;
+        }
+
+        function parseDesc(raw) { 
+            let d=raw,p=null,m=null; 
+            if(raw.includes('|| Phone:')) { const s=raw.split('|| Phone:'); d=s[0]; const r=s[1].split('|| Map:'); p=r[0].trim(); if(r[1]) m=r[1].trim(); } 
+            else if(raw.includes('|| Map:')) { const s=raw.split('|| Map:'); d=s[0]; m=s[1].trim(); } 
+            return { desc: d, phone: p, mapUrl: m }; 
+        }
+
+        window.checkSmartMatch = () => {
+            const i = document.getElementById('r_item').value.toLowerCase(), t = document.getElementById('r_type').value, a = document.getElementById('smartMatchAlert'), d = document.getElementById('matchDetails');
+            if(i.length < 3) { a.classList.add('hidden-ui'); return; }
+            const tt = (t === "Lost") ? "Found" : "Lost";
+            const m = cachedData.find(item => item.type === tt && item.status === "Open" && item.item.toLowerCase().includes(i));
+            if(m) { d.innerText = `"${m.item}"`; a.classList.remove('hidden-ui'); } else { a.classList.add('hidden-ui'); }
+        };
+
+        window.filterFeed = () => {
+            const s = document.getElementById('searchBar').value.toLowerCase(), t = document.getElementById('filterType').value;
+            document.querySelectorAll('#feedContainer div.glass').forEach(c => {
+                const title = c.querySelector('h3').innerText.toLowerCase(), type = c.querySelector('span.uppercase').innerText;
+                if((title.includes(s)) && (t === "All" || type === t.toUpperCase())) c.classList.remove('hidden-ui'); else c.classList.add('hidden-ui');
+            });
+        };
+
+        window.startDictation = () => {
+            if (window.hasOwnProperty('webkitSpeechRecognition')) {
+                const r = new webkitSpeechRecognition(); r.lang = "en-US"; r.start();
+                const m = document.getElementById('micIcon'); m.classList.replace('text-gray-400','text-red-500');
+                r.onresult = (e) => { document.getElementById('r_desc').value += " " + e.results[0][0].transcript; r.stop(); m.classList.replace('text-red-500','text-gray-400'); };
+                r.onerror = () => { r.stop(); m.classList.replace('text-red-500','text-gray-400'); };
+            } else alert("Use Chrome for voice.");
+        };
+
+        window.generatePoster = (itemJson) => {
+            const item = JSON.parse(decodeURIComponent(itemJson));
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+            doc.setFillColor(239, 68, 68); doc.rect(0, 0, 210, 40, 'F');
+            doc.setTextColor(255, 255, 255); doc.setFontSize(30); doc.setFont("helvetica", "bold"); doc.text("MISSING ITEM", 105, 25, null, null, "center");
+            doc.setTextColor(0, 0, 0); doc.setFontSize(22); doc.text(item.item, 105, 60, null, null, "center");
+            doc.setFontSize(14); doc.setFont("helvetica", "normal");
+            const splitDesc = doc.splitTextToSize(parseDesc(item.desc).desc, 180); doc.text(splitDesc, 15, 80);
+            if(item.image) { try { doc.addImage(item.image, 'JPEG', 60, 100, 90, 90); } catch(e){} }
+            doc.setFont("helvetica", "bold"); doc.text("Contact Email:", 15, 220); doc.setFont("helvetica", "normal"); doc.text(item.email, 15, 230);
+            doc.save(`Missing_${item.item}.pdf`);
+        };
+
+        window.downloadCSV = () => {
+            let csv = "data:text/csv;charset=utf-8,ID,Type,Item,Status,Email,Date\n";
+            cachedData.forEach(row => { csv += `${row.id},${row.type},${row.item},${row.status},${row.email},${row.date}\n`; });
+            const link = document.createElement("a"); link.setAttribute("href", encodeURI(csv)); link.setAttribute("download", "data.csv"); document.body.appendChild(link); link.click();
+        };
+
+        window.submitReport = async (e) => {
+            e.preventDefault(); const btn = document.getElementById('submitBtn'); const status = document.getElementById('uploadStatus'); btn.innerText = "Processing..."; btn.disabled = true;
+            let imageUrl = ""; const fileInput = document.getElementById('r_image');
+            if(fileInput.files.length > 0) {
+                status.classList.remove('hidden-ui');
+                try { imageUrl = await uploadImage(fileInput.files[0]); status.innerText = "Upload Complete!"; status.classList.replace('text-indigo-400', 'text-green-400'); } 
+                catch(err) { alert("Upload Failed"); btn.disabled = false; return; }
+            }
+            let d = document.getElementById('r_desc').value, m = document.getElementById('r_coords').value, p = document.getElementById('r_phone').value;
+            if(m) d += ` || Map: ${m}`; if(p) d += ` || Phone: ${p}`;
+            const pl = { action: "REPORT", type: document.getElementById('r_type').value, item: document.getElementById('r_item').value, desc: d, email: currentUser.email, reporter: currentUser.uid, image: imageUrl };
+            try { const res = await fetch(API_URL, { method: "POST", body: JSON.stringify(pl) }); const r = await res.json(); if(r.result === "Success") { alert("Report Submitted!"); document.querySelector('form').reset(); if(marker) map.removeLayer(marker); status.classList.add('hidden-ui'); window.fetchData(); } } catch (err) { alert("Network Error"); } finally { btn.innerHTML = '<span class="relative z-10 flex items-center gap-2"><i class="fa-solid fa-paper-plane"></i> Submit Report</span>'; btn.disabled = false; }
+        };
+
+        function renderFeed(data) {
+            const c = document.getElementById('feedContainer'); c.innerHTML = "";
+            const items = data.filter(x => x.status === "Open");
+            if(items.length === 0) c.innerHTML = "<div class='col-span-full text-center text-gray-500 py-10'><i class='fa-regular fa-folder-open text-4xl mb-2'></i><p>No active reports.</p></div>";
+            items.forEach(i => {
+                const { desc, phone, mapUrl } = parseDesc(i.desc);
+                // Safe Image Check - Prevents 404 on bad links
+                let imgHTML = "";
+                if(i.image && i.image.startsWith("http") && !i.image.includes("ERROR")) {
+                    imgHTML = `<img src="${i.image}" class="w-full h-48 object-cover rounded-xl mb-4 border border-white/10 cursor-pointer hover:opacity-90 transition" onclick="window.open('${i.image}')">`;
+                }
+                
+                let actions = "";
+                if(mapUrl) actions += `<a href="${mapUrl}" target="_blank" class="text-indigo-400 text-xs font-bold hover:text-white transition flex items-center gap-1"><i class="fa-solid fa-map-pin"></i> Map</a>`;
+                if(phone) actions += `<a href="https://wa.me/${phone}" target="_blank" class="text-green-400 text-xs font-bold hover:text-white transition flex items-center gap-1"><i class="fa-brands fa-whatsapp"></i> Chat</a>`;
+                if(i.type === 'Lost') actions += `<button onclick="generatePoster('${encodeURIComponent(JSON.stringify(i))}')" class="text-red-400 text-xs font-bold hover:text-white transition flex items-center gap-1"><i class="fa-solid fa-print"></i> PDF</button>`;
+                actions += `<a href="https://twitter.com/intent/tweet?text=Help Find: ${i.item}" target="_blank" class="text-blue-400 text-xs font-bold hover:text-white transition flex items-center gap-1"><i class="fa-brands fa-twitter"></i> Share</a>`;
+
+                c.innerHTML += `
+                    <div class="glass p-5 rounded-2xl hover:bg-slate-800/50 transition-all duration-300 group border border-white/5 hover:border-indigo-500/30">
+                        ${imgHTML}
+                        <div class="flex justify-between items-start mb-3">
+                            <div class="flex items-center"><h3 class="font-bold text-lg text-white group-hover:text-indigo-400 transition">${i.item}</h3></div>
+                            <span class="text-xs font-bold px-2 py-1 rounded-lg uppercase tracking-wider ${i.type==='Lost'?'bg-red-500/20 text-red-400':'bg-green-500/20 text-green-400'}">${i.type}</span>
+                        </div>
+                        <p class="text-gray-400 text-sm mb-4 line-clamp-2">${desc}</p>
+                        <div class="flex flex-wrap gap-4 pt-3 border-t border-white/10">${actions}</div>
+                        <div class="mt-4 flex justify-between items-center text-xs text-gray-500">
+                            <span><i class="fa-regular fa-clock mr-1"></i> ${new Date(i.date).toLocaleDateString()}</span>
+                            <span>${i.email.split('@')[0]}</span>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function renderLeaderboard(data) {
+            const l = document.getElementById('leaderboardList'); l.innerHTML = ""; const c = {}; data.filter(i => i.type === "Found").forEach(i => { const e = i.email || "Unknown"; c[e] = (c[e] || 0) + 1; }); const s = Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,5); if(s.length===0) l.innerHTML = "<li class='text-sm text-gray-500 text-center'>No heroes yet.</li>";
+            s.forEach(([e,n],i) => { let color="text-gray-400"; if(i===0) color="text-yellow-400"; else if(i===1) color="text-gray-300"; else if(i===2) color="text-orange-400";
+                l.innerHTML += `<li class="flex justify-between items-center bg-slate-800/50 p-3 rounded-xl border border-white/5 hover:border-white/10 transition"><div class="flex items-center gap-3"><i class="fa-solid fa-medal ${color}"></i><span class="text-sm font-bold text-gray-300">${e.split('@')[0]}</span></div><span class="text-xs font-bold bg-indigo-500/20 text-indigo-400 px-2 py-1 rounded-lg">${n} Found</span></li>`; });
+        }
+
+        function setupAdminUI() { 
+            document.getElementById('tab-admin').classList.remove('hidden-ui'); 
+            document.getElementById('view-admin').innerHTML = `<div class="glass p-8 rounded-3xl shadow-xl"><h2 class="text-2xl font-bold text-red-400 mb-6 flex items-center gap-2"><i class="fa-solid fa-shield-halved"></i> Admin Console</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8"><div class="bg-slate-800/50 p-6 rounded-2xl border border-white/5 flex flex-col items-center"><h3 class="font-bold text-indigo-400 mb-4">Live Analytics</h3><div class="w-64 h-64"><canvas id="adminChart"></canvas></div><button onclick="downloadCSV()" class="mt-4 text-xs font-bold text-gray-400 hover:text-white underline"><i class="fa-solid fa-download"></i> Export Data CSV</button></div>
+            <div class="bg-indigo-900/20 p-6 rounded-2xl border border-indigo-500/20"><h3 class="font-bold text-indigo-400 mb-4 flex items-center gap-2"><i class="fa-solid fa-bullhorn"></i> Broadcast System</h3><input id="bc_s" placeholder="Subject Line" class="w-full bg-slate-900 border border-white/10 p-3 rounded-xl mb-3 outline-none text-white"><textarea id="bc_m" placeholder="Announcement Message..." class="w-full bg-slate-900 border border-white/10 p-3 rounded-xl mb-3 outline-none text-white"></textarea><button onclick="sendBroadcast()" class="btn-primary w-full text-white font-bold px-6 py-3 rounded-xl">Send Global Broadcast</button></div></div>
+            <div class="overflow-x-auto rounded-xl border border-white/10"><table class="w-full text-left text-gray-300"><thead class="bg-slate-800 text-xs uppercase font-bold text-gray-400"><tr class="border-b border-white/10"><th class="p-4">Type</th><th class="p-4">Item</th><th class="p-4">Reporter</th><th class="p-4">Action</th></tr></thead><tbody id="adminTableBody" class="divide-y divide-white/5"></tbody></table></div></div>`; 
+        }
+
+        window.renderAdminDashboard = (data) => { 
+            const t = document.getElementById('adminTableBody'); if(!t) return; t.innerHTML = ""; 
+            data.forEach(i => { t.innerHTML += `<tr class="hover:bg-white/5 transition"><td class="p-4"><span class="px-2 py-1 rounded text-xs font-bold uppercase ${i.type==='Lost'?'bg-red-500/20 text-red-400':'bg-green-500/20 text-green-400'}">${i.type}</span></td><td class="p-4 font-medium text-white">${i.item}</td><td class="p-4 text-sm text-gray-400">${i.email}</td><td class="p-4">${i.status!=='Resolved'?`<button onclick="markResolved(${i.rowIndex})" class="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg transition">Resolve</button>`:'<span class="text-green-400 flex items-center gap-1"><i class="fa-solid fa-check"></i> Done</span>'}</td></tr>`; });
+            const ctx = document.getElementById('adminChart'); if(ctx) { if(adminChartInstance) adminChartInstance.destroy(); const l=data.filter(i=>i.type==='Lost'&&i.status==='Open').length, f=data.filter(i=>i.type==='Found'&&i.status==='Open').length, r=data.filter(i=>i.status==='Resolved').length; adminChartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: ['Lost', 'Found', 'Resolved'], datasets: [{ data: [l, f, r], backgroundColor: ['#ef4444', '#22c55e', '#94a3b8'], borderWidth: 0 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: 'white' } } } } }); }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user; isAdmin = ADMINS.includes(user.email);
+                document.getElementById('authScreen').classList.add('hidden-ui'); document.getElementById('appScreen').classList.remove('hidden-ui'); document.getElementById('userControls').classList.remove('hidden-ui'); document.getElementById('userEmailDisplay').innerText = user.email;
+                document.getElementById('qr_email').value = user.email; // Auto-fill QR email
+                window.fetchData(); setTimeout(window.initMap, 1000); if(isAdmin) setupAdminUI();
+            } else { document.getElementById('authScreen').classList.remove('hidden-ui'); document.getElementById('appScreen').classList.add('hidden-ui'); document.getElementById('userControls').classList.add('hidden-ui'); }
+        });
+
+        window.fetchData = async () => { try { const res = await fetch(API_URL); const data = await res.json(); cachedData = data; renderFeed(data); renderLeaderboard(data); if(isAdmin) renderAdminDashboard(data); } catch(e) {} };
+        window.handleLogin = async () => { try { await signInWithEmailAndPassword(auth, document.getElementById('loginEmail').value, document.getElementById('loginPass').value); } catch(e){ alert(e.message); } };
+        window.handleRegister = async () => { try { await createUserWithEmailAndPassword(auth, document.getElementById('loginEmail').value, document.getElementById('loginPass').value); } catch(e){ alert(e.message); } };
+        window.handleGoogleLogin = async () => { try { await signInWithPopup(auth, provider); } catch(e){ alert(e.message); } };
+        window.logout = () => signOut(auth);
+        
+        window.switchTab = (t) => {
+            ['report', 'feed', 'qr', 'contact', 'admin'].forEach(v => {
+                document.getElementById(`view-${v}`).classList.add('hidden-ui');
+                const btn = document.getElementById(`tab-${v}`);
+                btn.classList.remove('btn-primary', 'text-white', 'shadow-lg');
+                btn.classList.add('text-gray-400', 'hover:bg-slate-800');
+            });
+            document.getElementById(`view-${t}`).classList.remove('hidden-ui');
+            const active = document.getElementById(`tab-${t}`);
+            active.classList.remove('text-gray-400', 'hover:bg-slate-800');
+            active.classList.add('btn-primary', 'text-white', 'shadow-lg');
+            if(t === 'report') setTimeout(window.initMap, 100);
+        };
+
+        window.markResolved = async (idx) => { if(confirm("Resolve?")) { confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } }); await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "RESOLVE", rowIndex: idx }) }); window.fetchData(); } };
+        window.sendBroadcast = async () => { if(confirm("Send Broadcast?")) { await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "BROADCAST", subject: document.getElementById('bc_s').value, message: document.getElementById('bc_m').value }) }); alert("Broadcast Sent!"); }};
+    </script>
+</body>
+</html>
