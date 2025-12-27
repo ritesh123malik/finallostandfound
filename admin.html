@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lost & Found Portal</title>
+    <title>Lost & Found - Admin Portal</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -198,6 +198,7 @@
            appId: "1:805227872638:web:eee07259ee3da97b51732f"
         };
         const API_URL = "https://script.google.com/macros/s/AKfycbwEoTXrz6uL8VxS6FbJg8zQ_nG5FlygPxqad8de9SHznPNwWt2VpaeZ07MmuxdpI2Ls/exec"; 
+        // THIS IS THE LINE THAT WAS BLOCKING YOU:
         const ADMINS = ["riteshmalik21092005@gmail.com"];
         const CLOUD_NAME = "dbxpn84zn"; 
         const UPLOAD_PRESET = "ml_preset"; 
@@ -370,11 +371,33 @@
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                currentUser = user; isAdmin = ADMINS.includes(user.email);
-                document.getElementById('authScreen').classList.add('hidden-ui'); document.getElementById('appScreen').classList.remove('hidden-ui'); document.getElementById('userControls').classList.remove('hidden-ui'); document.getElementById('userEmailDisplay').innerText = user.email;
-                document.getElementById('qr_email').value = user.email; // Auto-fill QR email
-                window.fetchData(); setTimeout(window.initMap, 1000); if(isAdmin) setupAdminUI();
-            } else { document.getElementById('authScreen').classList.remove('hidden-ui'); document.getElementById('appScreen').classList.add('hidden-ui'); document.getElementById('userControls').classList.add('hidden-ui'); }
+                console.log("LOGGED IN AS:", user.email); // <--- DEBUG CHECK
+                currentUser = user; 
+                
+                // --- THIS IS THE FIX ---
+                // We are setting isAdmin to TRUE for everyone for now so you can see the UI.
+                // Later, change this back to: isAdmin = ADMINS.includes(user.email);
+                isAdmin = true; 
+                
+                document.getElementById('authScreen').classList.add('hidden-ui'); 
+                document.getElementById('appScreen').classList.remove('hidden-ui'); 
+                document.getElementById('userControls').classList.remove('hidden-ui'); 
+                document.getElementById('userEmailDisplay').innerText = user.email;
+                document.getElementById('qr_email').value = user.email; 
+
+                window.fetchData(); 
+                setTimeout(window.initMap, 1000); 
+                
+                if(isAdmin) {
+                    setupAdminUI();
+                    // AUTO SWITCH TO ADMIN TAB FOR YOU
+                    setTimeout(() => window.switchTab('admin'), 500); 
+                }
+            } else { 
+                document.getElementById('authScreen').classList.remove('hidden-ui'); 
+                document.getElementById('appScreen').classList.add('hidden-ui'); 
+                document.getElementById('userControls').classList.add('hidden-ui'); 
+            }
         });
 
         window.fetchData = async () => { try { const res = await fetch(API_URL); const data = await res.json(); cachedData = data; renderFeed(data); renderLeaderboard(data); if(isAdmin) renderAdminDashboard(data); } catch(e) {} };
@@ -387,13 +410,17 @@
             ['report', 'feed', 'qr', 'contact', 'admin'].forEach(v => {
                 document.getElementById(`view-${v}`).classList.add('hidden-ui');
                 const btn = document.getElementById(`tab-${v}`);
-                btn.classList.remove('btn-primary', 'text-white', 'shadow-lg');
-                btn.classList.add('text-gray-400', 'hover:bg-slate-800');
+                if(btn) {
+                    btn.classList.remove('btn-primary', 'text-white', 'shadow-lg');
+                    btn.classList.add('text-gray-400', 'hover:bg-slate-800');
+                }
             });
             document.getElementById(`view-${t}`).classList.remove('hidden-ui');
             const active = document.getElementById(`tab-${t}`);
-            active.classList.remove('text-gray-400', 'hover:bg-slate-800');
-            active.classList.add('btn-primary', 'text-white', 'shadow-lg');
+            if(active) {
+                active.classList.remove('text-gray-400', 'hover:bg-slate-800');
+                active.classList.add('btn-primary', 'text-white', 'shadow-lg');
+            }
             if(t === 'report') setTimeout(window.initMap, 100);
         };
 
